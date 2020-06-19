@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -83,7 +83,6 @@ void main() {
 
   testWidgets('PageView does not squish when overscrolled', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
-      theme: ThemeData(platform: TargetPlatform.iOS),
       home: PageView(
         children: List<Widget>.generate(10, (int i) {
           return Container(
@@ -113,7 +112,7 @@ void main() {
 
     expect(leftOf(0), lessThan(0.0));
     expect(sizeOf(0), equals(const Size(800.0, 600.0)));
-  });
+  }, variant: const TargetPlatformVariant(<TargetPlatform>{ TargetPlatform.iOS,  TargetPlatform.macOS }));
 
   testWidgets('PageController control test', (WidgetTester tester) async {
     final PageController controller = PageController(initialPage: 4);
@@ -663,7 +662,7 @@ void main() {
       await tester.pumpWidget(build());
 
       // The first 3 items should be visible and tappable.
-      for (int index in visiblePages) {
+      for (final int index in visiblePages) {
         expect(find.text(index.toString()), findsOneWidget);
         // The center of page 2's x-coordinate is 800, so we have to manually
         // offset it a bit to make sure the tap lands within the screen.
@@ -676,11 +675,53 @@ void main() {
       await tester.pump();
       // The last 3 items should be visible and tappable.
       visiblePages = const <int> [17, 18, 19];
-      for (int index in visiblePages) {
+      for (final int index in visiblePages) {
         expect(find.text('$index'), findsOneWidget);
         await tester.tap(find.text('$index'));
         expect(tappedIndex, index);
       }
+  });
+
+  testWidgets('the current item remains centered on constraint change', (WidgetTester tester) async {
+    // Regression test for https://github.com/flutter/flutter/issues/50505.
+    final PageController controller = PageController(
+      initialPage: kStates.length - 1,
+      viewportFraction: 0.5,
+    );
+
+    Widget build(Size size) {
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: SizedBox.fromSize(
+            size: size,
+            child: PageView(
+              children: kStates.map<Widget>((String state) => Text(state)).toList(),
+              controller: controller,
+              onPageChanged: (int page) { },
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Verifies that the last item is centered on screen.
+    void verifyCentered() {
+      expect(
+        tester.getCenter(find.text(kStates.last)),
+        offsetMoreOrLessEquals(const Offset(400, 300)),
+      );
+    }
+
+    await tester.pumpWidget(build(const Size(300, 300)));
+    await tester.pumpAndSettle();
+
+    verifyCentered();
+
+    await tester.pumpWidget(build(const Size(200, 300)));
+    await tester.pumpAndSettle();
+
+    verifyCentered();
   });
 
   testWidgets('PageView does not report page changed on overscroll', (WidgetTester tester) async {
@@ -865,5 +906,47 @@ void main() {
     // Simulate precision error.
     pageController.position.jumpTo(799.99999999999);
     expect(pageController.page, 1);
+  });
+
+  testWidgets('PageView can participate in a11y scrolling', (WidgetTester tester) async {
+    final SemanticsTester semantics = SemanticsTester(tester);
+
+    final PageController controller = PageController();
+    await tester.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: PageView(
+          controller: controller,
+          children: List<Widget>.generate(4, (int i) {
+            return Semantics(
+              child: Text('Page #$i'),
+              container: true,
+            );
+          }),
+          allowImplicitScrolling: true,
+        ),
+    ));
+    expect(controller.page, 0);
+
+    expect(semantics, includesNodeWith(flags: <SemanticsFlag>[SemanticsFlag.hasImplicitScrolling]));
+    expect(semantics, includesNodeWith(label: 'Page #0'));
+    expect(semantics, includesNodeWith(label: 'Page #1', flags: <SemanticsFlag>[SemanticsFlag.isHidden]));
+    expect(semantics, isNot(includesNodeWith(label: 'Page #2', flags: <SemanticsFlag>[SemanticsFlag.isHidden])));
+    expect(semantics, isNot(includesNodeWith(label: 'Page #3', flags: <SemanticsFlag>[SemanticsFlag.isHidden])));
+
+    controller.nextPage(duration: const Duration(milliseconds: 150), curve: Curves.ease);
+    await tester.pumpAndSettle();
+    expect(semantics, includesNodeWith(label: 'Page #0', flags: <SemanticsFlag>[SemanticsFlag.isHidden]));
+    expect(semantics, includesNodeWith(label: 'Page #1'));
+    expect(semantics, includesNodeWith(label: 'Page #2', flags: <SemanticsFlag>[SemanticsFlag.isHidden]));
+    expect(semantics, isNot(includesNodeWith(label: 'Page #3', flags: <SemanticsFlag>[SemanticsFlag.isHidden])));
+
+    controller.nextPage(duration: const Duration(milliseconds: 150), curve: Curves.ease);
+    await tester.pumpAndSettle();
+    expect(semantics, isNot(includesNodeWith(label: 'Page #0', flags: <SemanticsFlag>[SemanticsFlag.isHidden])));
+    expect(semantics, includesNodeWith(label: 'Page #1', flags: <SemanticsFlag>[SemanticsFlag.isHidden]));
+    expect(semantics, includesNodeWith(label: 'Page #2'));
+    expect(semantics, includesNodeWith(label: 'Page #3', flags: <SemanticsFlag>[SemanticsFlag.isHidden]));
+
+    semantics.dispose();
   });
 }

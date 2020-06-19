@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -47,7 +47,7 @@ Widget boilerplate({ Widget child }) {
 }
 
 Color getBackgroundColor(WidgetTester tester, int childIndex) {
-  return getRenderSegmentedControl(tester).backgroundColors[childIndex];
+  return getRenderSegmentedControl(tester).backgroundColors[childIndex] as Color;
 }
 
 void main() {
@@ -912,7 +912,7 @@ void main() {
 
     expect(sharedValue, 1);
 
-    final double childWidth = getRenderSegmentedControl(tester).firstChild.size.width;
+    final double childWidth = getRenderSegmentedControl(tester).firstChild.size.width as double;
     final Offset centerOfSegmentedControl = tester.getCenter(find.text('Child 1'));
 
     // Tap just inside segment bounds
@@ -924,6 +924,44 @@ void main() {
     );
 
     expect(sharedValue, 0);
+  });
+
+  testWidgets(
+    'Segment still hittable with a child that has no hitbox',
+    (WidgetTester tester) async {
+      // Regression test for https://github.com/flutter/flutter/issues/57326.
+      final Map<int, Widget> children = <int, Widget>{};
+      children[0] = const Text('Child 1');
+      children[1] = const SizedBox();
+      int sharedValue = 0;
+
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return boilerplate(
+              child: CupertinoSegmentedControl<int>(
+                key: const ValueKey<String>('Segmented Control'),
+                children: children,
+                onValueChanged: (int newValue) {
+                  setState(() {
+                    sharedValue = newValue;
+                  });
+                },
+                groupValue: sharedValue,
+              ),
+            );
+          },
+        ),
+      );
+
+      expect(sharedValue, 0);
+
+      final Offset centerOfTwo = tester.getCenter(find.byWidget(children[1]));
+      // Tap within the bounds of children[1], but not at the center.
+      // children[1] is a SizedBox thus not hittable by itself.
+      await tester.tapAt(centerOfTwo + const Offset(10, 0));
+
+      expect(sharedValue, 1);
   });
 
   testWidgets('Animation is correct when the selected segment changes', (WidgetTester tester) async {

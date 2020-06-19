@@ -1,9 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -730,6 +731,15 @@ void main() {
     expect(painter.inlinePlaceholderBoxes[13], const TextBox.fromLTRBD(351, 30, 401, 60, TextDirection.ltr));
   }, skip: isBrowser);
 
+  // Null values are valid. See https://github.com/flutter/flutter/pull/48346#issuecomment-584839221
+  test('TextPainter set TextHeightBehavior null test', () {
+    final TextPainter painter = TextPainter(textHeightBehavior: null)
+      ..textDirection = TextDirection.ltr;
+
+    painter.textHeightBehavior = const TextHeightBehavior();
+    painter.textHeightBehavior = null;
+  });
+
   test('TextPainter line metrics', () {
     final TextPainter painter = TextPainter()
       ..textDirection = TextDirection.ltr;
@@ -741,9 +751,21 @@ void main() {
 
     painter.layout(maxWidth: 300);
 
+    expect(painter.text, const TextSpan(text: text));
+    expect(painter.preferredLineHeight, 14);
+
     final List<ui.LineMetrics> lines = painter.computeLineMetrics();
 
     expect(lines.length, 4);
+
+    // TODO(garyq): This data dump is for debugging a test flake. This should
+    // be removed when it is no longer useful.
+    if (lines[1].hardBreak == true) {
+      print('LineMetrics called: ${lines.length}');
+      for (final ui.LineMetrics line in lines) {
+        print('${line.lineNumber}: ${line.hardBreak}');
+      }
+    }
 
     expect(lines[0].hardBreak, true);
     expect(lines[1].hardBreak, false);
@@ -789,43 +811,26 @@ void main() {
     expect(lines[1].lineNumber, 1);
     expect(lines[2].lineNumber, 2);
     expect(lines[3].lineNumber, 3);
-  }, skip: !isLinux);
 
-  test('getLineBoundary', () {
+  // Disable this test, this is causing a large amount of flaking and
+  // does not have a clear cause. This may or may not be a dart compiler
+  // issue or similar. See https://github.com/flutter/flutter/issues/43763
+  // for more info.
+  }, skip: true);
+
+  test('TextPainter caret height and line height', () {
     final TextPainter painter = TextPainter()
-      ..textDirection = TextDirection.ltr;
+      ..textDirection = TextDirection.ltr
+      ..strutStyle = const StrutStyle(fontSize: 50.0);
 
-    const String text = 'test1\nhello line two really long for soft break\nfinal line 4';
-    painter.text = const TextSpan(
-      text: text,
+    const String text = 'A';
+    painter.text = const TextSpan(text: text, style: TextStyle(height: 1.0));
+    painter.layout();
+
+    final double caretHeight = painter.getFullHeightForCaret(
+      const ui.TextPosition(offset: 0),
+      ui.Rect.zero,
     );
-
-    painter.layout(maxWidth: 300);
-
-    final List<ui.LineMetrics> lines = painter.computeLineMetrics();
-
-    expect(lines.length, 4);
-
-    expect(painter.getLineBoundary(const TextPosition(offset: -1)), const TextRange(start: -1, end: -1));
-
-    expect(painter.getLineBoundary(const TextPosition(offset: 0)), const TextRange(start: 0, end: 5));
-    expect(painter.getLineBoundary(const TextPosition(offset: 1)), const TextRange(start: 0, end: 5));
-    expect(painter.getLineBoundary(const TextPosition(offset: 4)), const TextRange(start: 0, end: 5));
-    expect(painter.getLineBoundary(const TextPosition(offset: 5)), const TextRange(start: 0, end: 5));
-
-    expect(painter.getLineBoundary(const TextPosition(offset: 10)), const TextRange(start: 6, end: 28));
-    expect(painter.getLineBoundary(const TextPosition(offset: 15)), const TextRange(start: 6, end: 28));
-    expect(painter.getLineBoundary(const TextPosition(offset: 21)), const TextRange(start: 6, end: 28));
-    expect(painter.getLineBoundary(const TextPosition(offset: 28)), const TextRange(start: 6, end: 28));
-
-    expect(painter.getLineBoundary(const TextPosition(offset: 29)), const TextRange(start: 28, end: 47));
-    expect(painter.getLineBoundary(const TextPosition(offset: 47)), const TextRange(start: 28, end: 47));
-
-    expect(painter.getLineBoundary(const TextPosition(offset: 48)), const TextRange(start: 48, end: 60));
-    expect(painter.getLineBoundary(const TextPosition(offset: 49)), const TextRange(start: 48, end: 60));
-    expect(painter.getLineBoundary(const TextPosition(offset: 60)), const TextRange(start: 48, end: 60));
-
-    expect(painter.getLineBoundary(const TextPosition(offset: 61)), const TextRange(start: -1, end: -1));
-    expect(painter.getLineBoundary(const TextPosition(offset: 100)), const TextRange(start: -1, end: -1));
-  }, skip: !isLinux);
+    expect(caretHeight, 50.0);
+  }, skip: kIsWeb);
 }

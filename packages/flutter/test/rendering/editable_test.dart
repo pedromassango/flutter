@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -368,6 +368,58 @@ void main() {
     expect(editable, paintsExactlyCountTimes(#drawRect, 1));
   }, skip: isBrowser);
 
+  test('ignore key event from web platform', () async {
+    final TextSelectionDelegate delegate = FakeEditableTextState();
+    final ViewportOffset viewportOffset = ViewportOffset.zero();
+    TextSelection currentSelection;
+    final RenderEditable editable = RenderEditable(
+      backgroundCursorColor: Colors.grey,
+      selectionColor: Colors.black,
+      textDirection: TextDirection.ltr,
+      cursorColor: Colors.red,
+      offset: viewportOffset,
+      // This makes the scroll axis vertical.
+      maxLines: 2,
+      textSelectionDelegate: delegate,
+      onSelectionChanged: (TextSelection selection, RenderEditable renderObject, SelectionChangedCause cause) {
+        currentSelection = selection;
+      },
+      startHandleLayerLink: LayerLink(),
+      endHandleLayerLink: LayerLink(),
+      text: const TextSpan(
+        text: 'test\ntest',
+        style: TextStyle(
+          height: 1.0, fontSize: 10.0, fontFamily: 'Ahem',
+        ),
+      ),
+      selection: const TextSelection.collapsed(
+        offset: 4,
+      ),
+    );
+
+    layout(editable);
+    editable.hasFocus = true;
+
+    expect(
+      editable,
+      paints..paragraph(offset: Offset.zero),
+    );
+
+    editable.selectPositionAt(from: const Offset(0, 0), cause: SelectionChangedCause.tap);
+    editable.selection = const TextSelection.collapsed(offset: 0);
+    pumpFrame();
+
+    if(kIsWeb) {
+      await simulateKeyDownEvent(LogicalKeyboardKey.arrowRight, platform: 'web');
+      expect(currentSelection.isCollapsed, true);
+      expect(currentSelection.baseOffset, 0);
+    } else {
+      await simulateKeyDownEvent(LogicalKeyboardKey.arrowRight, platform: 'android');
+      expect(currentSelection.isCollapsed, true);
+      expect(currentSelection.baseOffset, 1);
+    }
+  });
+
   test('selects correct place with offsets', () {
     final TextSelectionDelegate delegate = FakeEditableTextState();
     final ViewportOffset viewportOffset = ViewportOffset.zero();
@@ -611,29 +663,4 @@ void main() {
     editable.layout(BoxConstraints.loose(const Size(1000.0, 1000.0)));
     expect(editable.maxScrollExtent, equals(10));
   }, skip: isBrowser); // TODO(yjbanov): https://github.com/flutter/flutter/issues/42772
-
-  test('selection affinity uses fallback', () {
-    final TextSelectionDelegate delegate = FakeEditableTextState();
-    EditableText.debugDeterministicCursor = true;
-
-    final RenderEditable editable = RenderEditable(
-      textDirection: TextDirection.ltr,
-      cursorColor: const Color.fromARGB(0xFF, 0xFF, 0x00, 0x00),
-      offset: ViewportOffset.zero(),
-      textSelectionDelegate: delegate,
-      startHandleLayerLink: LayerLink(),
-      endHandleLayerLink: LayerLink(),
-    );
-
-    expect(editable.selection, null);
-
-    const TextSelection sel1 = TextSelection(baseOffset: 10, extentOffset: 11);
-    editable.selection = sel1;
-    expect(editable.selection, sel1);
-
-    const TextSelection sel2 = TextSelection(baseOffset: 10, extentOffset: 11, affinity: null);
-    const TextSelection sel3 = TextSelection(baseOffset: 10, extentOffset: 11, affinity: TextAffinity.downstream);
-    editable.selection = sel2;
-    expect(editable.selection, sel3);
-  }, skip: isBrowser);
 }
