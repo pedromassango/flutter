@@ -3846,7 +3846,10 @@ class EditableTextState extends State<EditableText>
 
   void _openOrCloseInputConnectionIfNeeded() {
     if (_hasFocus && widget.focusNode.consumeKeyboardToken()) {
-      _openInputConnection();
+      // Only open the input connection on non-web platforms
+      if (kIsWeb) {
+        _openInputConnection();
+      }
     } else if (!_hasFocus) {
       _closeInputConnectionIfNeeded();
       widget.controller.clearComposing();
